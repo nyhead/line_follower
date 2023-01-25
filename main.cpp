@@ -12,7 +12,7 @@ const int black = 0, white = 1;
 
 
 struct Bot {
-  enum States {Straight, TurnLeft, TurnRight, InterLeft, InterRight, AMK};
+  enum States {Straight, Left, Right, Intersection, UntilStraight, UntilLeftRight};
   bool running = false;
   bool leftRoute = true;
   States state;
@@ -42,7 +42,7 @@ bool inRangeBlack(int val){ return lowBlack <= val && val <= highBlack; }
 bool inRangeWhite(int val){ return lowWhite <= val && val <= highWhite; }
 bool inRangeGray(int val) {return highBlack - 100 <= val && val <= lowWhite - 200;}
 bool isIntersection(int middleLeft, int middle, int middleRight) {return (!inRangeWhite(middle) && !inRangeWhite(middleLeft) && !inRangeWhite(middleRight));}
-bool isStraight(int middleLeft, int middle, int middleRight) {return (inRangeWhite(middleLeft) && inRangeWhite(middleRight));}
+bool isStraight(int middleLeft, int middleRight) {return (inRangeWhite(middleLeft) && inRangeWhite(middleRight));}
 bool allWhite(int left, int middleLeft, int middle, int middleRight, int right) {return inRangeWhite(middle) && inRangeWhite(middleLeft) && inRangeWhite(middleRight) && inRangeWhite(left) && inRangeWhite(right);}
 bool leftTurn(int middleLeft, int middle, int middleRight) {return !inRangeBlack(middle) && inRangeBlack(middleLeft) && !inRangeBlack(middleRight);}
 bool rightTurn(int middleLeft, int middle, int middleRight) {return !inRangeBlack(middle) && !inRangeBlack(middleLeft) && inRangeBlack(middleRight);}
@@ -114,69 +114,20 @@ unsigned long interWaitTime = 0;
 unsigned long orgWaitTime = 20;
 unsigned long waitTime = orgWaitTime;
 bool intersectionMode = false;
+int left = 0, right = 0;
 void loop() {
   // put your main code here, to run repeatedly:
   // 1 -black 0 - white for simplicity
   // black 100 - 300 , white 900-
-
-
-  unsigned long now = millis();
-
-
-
-  if (!digitalRead(button)) {
-    bot.running = !bot.running;
-  }
-
-  if (bot.running) {
-    digitalWrite(led, 1);
-    switch (bot.state)
-    {
-
-    case bot.Straight:
-      leftMotor.go(20);
-      rightMotor.go(20);
-
-      break;
-    case bot.InterLeft:
-    // leftMotor.go(0);
-    // rightMotor.go(-100);
-      
-      leftMotor.go(100);
-      rightMotor.go(0);
-
-      break;    
-    case bot.InterRight:
-      leftMotor.go(0);
-      rightMotor.go(100);
-      break;
-    case bot.TurnLeft:
-      leftMotor.go(25);
-      rightMotor.go(-5);
-      break;     
-    case bot.TurnRight:
-      leftMotor.go(-5);
-      rightMotor.go(25);
-      break;    
-    case bot.AMK:
-      leftMotor.go(0);
-      rightMotor.go(0);
-      break;       
-    }
-  } 
-   else {
-    digitalWrite(led, 0);
-    leftMotor.go(0);
-    rightMotor.go(0);
-    
-  } 
-
 
   int left = analogRead(sensors[0]);
   int middleLeft = analogRead(sensors[1]);
   int middle = analogRead(sensors[2]);
   int middleRight = analogRead(sensors[3]);
   int right = analogRead(sensors[4]);
+
+
+  unsigned long now = millis();
 
   if (inRangeBlack(left) && inRangeBlack(right)) {
         bot.running = false;
@@ -187,38 +138,54 @@ void loop() {
     if (MarkReading(left,right)) interWaitTime = 5000; 
     interLast = now;
   }
-  
 
-  if ((now - last) >= waitTime) {
-    // Debug(left,middleLeft, middle, middleRight, right);
-
-
-
-
-    if (isIntersection(middleLeft, middle, middleRight)) 
-    { 
-        interTurnLoop();
-    }   
-    waitTime = orgWaitTime;
-
-
-    if (isStraight(middleLeft, middle, middleRight)) {
-      bot.state = bot.Straight;
-      waitTime = orgWaitTime;
-
-    } 
-    else if (inRangeBlack(middleLeft)) {
-      bot.state = bot.TurnRight;
-      waitTime = orgWaitTime;
-
-    } 
-    else if (inRangeBlack(middleRight)) {
-      bot.state = bot.TurnLeft;
-      waitTime = orgWaitTime;
-
-    }
-     
-
-  last = now;
+  if (!digitalRead(button)) {
+    bot.running = !bot.running;
   }
+
+  if (bot.running) {
+    switch(bot.state) {
+      case bot.Straight:
+        left = 20;
+        right = 20;
+        bot.state = bot.UntilStraight;
+        break;
+      case bot.Left:
+        left = -5;
+        right = 25;
+        bot.state = bot.UntilLeftRight;
+        break;      
+      case bot.Right:
+        left = 25;
+        right = -5;      
+        bot.state = bot.UntilLeftRight;
+        break;      
+      case bot.Intersection:
+        if (bot.leftRoute) {
+          left = 0;
+          right = 100;          
+        }
+        else {
+          left = 100;
+          right = 0;
+        }
+        bot.state = bot.UntilStraight;
+        break;
+      case bot.UntilStraight:
+        if (inRangeBlack(right))
+          bot.state = bot.Right;
+        else if (inRangeBlack(left))
+          bot.state = bot.Left;
+        else if (isIntersection(middleLeft, middle, middleRight))
+          bot.state = bot.Intersection;
+        break;
+      case bot.UntilLeftRight:
+        if (isStraight(middleLeft, middleRight))
+          bot.state = bot.Straight;
+        break;    
+    }
+  }
+
+  leftMotor.go(left);
+  rightMotor.go(right);
 }
